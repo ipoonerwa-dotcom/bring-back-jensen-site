@@ -2,7 +2,8 @@
 // Plain node:http, no framework. Run: npm start
 import { createServer } from "node:http";
 import { readFileSync } from "node:fs";
-import { join } from "node:path";
+import { join, resolve } from "node:path";
+import { pathToFileURL } from "node:url";
 import { getAddress, isAddress, verifyMessage } from "viem";
 import { DATA_DIR, loadConfig, loadSecrets, publicConfig } from "./lib/config.mjs";
 import { createChain } from "./lib/chain.mjs";
@@ -13,8 +14,8 @@ const cfg = loadConfig();
 const secrets = loadSecrets();
 const chain = createChain(cfg);
 
-// SQLite is opened after the server is listening. A missing node:sqlite or a read-only data/
-// must not throw while the module loads, or Vercel never finishes capturing listen().
+// SQLite stays closed until a route needs it. Opening it, or importing node:sqlite,
+// while the module loads keeps the Vercel invocation pending until it is killed.
 let store = null;
 let StoreConflict = class extends Error {
   constructor(code) {
@@ -22,23 +23,27 @@ let StoreConflict = class extends Error {
     this.code = code;
   }
 };
-const registrationsReady = import("./lib/store.mjs")
-  .then((mod) => {
-    StoreConflict = mod.StoreConflict;
-    try {
-      store = mod.openStore(join(DATA_DIR, "registrations.db"));
-    } catch (e) {
-      console.warn("registrations unavailable:", e.message);
-      store = null;
-    }
-  })
-  .catch((e) => {
-    console.warn("registrations unavailable:", e.message);
-    store = null;
-  });
-registrationsReady.then(() => {
-  if (!store) console.warn("registrations database is not open");
-});
+let registrationsReady = null;
+function ensureStore() {
+  if (!registrationsReady) {
+    registrationsReady = import("./lib/store.mjs")
+      .then((mod) => {
+        StoreConflict = mod.StoreConflict;
+        try {
+          store = mod.openStore(join(DATA_DIR, "registrations.db"));
+        } catch (e) {
+          console.warn("registrations unavailable:", e.message);
+          store = null;
+        }
+        if (!store) console.warn("registrations database is not open");
+      })
+      .catch((e) => {
+        console.warn("registrations unavailable:", e.message);
+        store = null;
+      });
+  }
+  return registrationsReady;
+}
 
 const SIGN_WINDOW_MS = 10 * 60 * 1000;
 const MAX_BODY = 8 * 1024;
@@ -146,13 +151,12 @@ function limited(ip, key, base, windowMs) {
     w = { start: now, n: 0 };
     hits.set(k, w);
   }
+  if (hits.size > 200) {
+    for (const [hitKey, hit] of hits) if (now - hit.start > 120_000) hits.delete(hitKey);
+  }
   w.n += 1;
   return w.n > max;
 }
-setInterval(() => {
-  const now = Date.now();
-  for (const [k, w] of hits) if (now - w.start > 120_000) hits.delete(k);
-}, 60_000).unref();
 
 function publicRegistration(row) {
   return { handle: row.handle, tweetUrl: row.tweet_url, createdAt: row.created_at, updatedAt: row.updated_at };
@@ -177,7 +181,7 @@ function requireRegistration() {
 
 async function api(req, res, url) {
   const ip = clientIp(req);
-  if (url.pathname !== "/api/config") await registrationsReady;
+  if (url.pathname !== "/api/config") await ensureStore();
   switch (`${req.method} ${url.pathname}`) {
     case "GET /api/config":
       return sendJson(res, 200, publicConfig(cfg));
@@ -270,7 +274,7 @@ async function api(req, res, url) {
   }
 }
 
-const server = createServer(async (req, res) => {
+async function handleRequest(req, res) {
   let url;
   try {
     url = new URL(req.url || "/", "http://localhost");
@@ -295,7 +299,9 @@ const server = createServer(async (req, res) => {
     if (!res.headersSent) sendJson(res, status, { error: e instanceof HttpError ? e.code : "INTERNAL" });
     else res.end();
   }
-});
+}
+
+const server = createServer(handleRequest);
 
 function logReady() {
   console.log(`${cfg.siteName} on http://${cfg.host}:${cfg.port}  (config: ${cfg.file}, data: ${DATA_DIR})`);
@@ -311,10 +317,21 @@ server.on("error", (e) => {
   console.error(e);
 });
 
-// Vercel captures listen() while this module loads and ignores the port and host.
-// Calling it with no host avoids binding only to 127.0.0.1 inside their sandbox.
-if (process.env.VERCEL) server.listen(cfg.port, logReady);
-else server.listen(cfg.port, cfg.host, logReady);
+// `node server.mjs` listens. Vercel imports this file and calls the exported
+// function; it also stubs listen() during that import. A second argument or a
+// timer started here never lets that invocation finish, so the platform waits
+// about 60s and returns INTERNAL_FUNCTION_INVOCATION_FAILED.
+function isDirectRun() {
+  const entry = process.argv[1];
+  if (!entry) return false;
+  try {
+    return import.meta.url === pathToFileURL(resolve(entry)).href;
+  } catch {
+    return false;
+  }
+}
+if (isDirectRun()) server.listen(cfg.port, cfg.host, logReady);
+else if (process.env.VERCEL) server.listen(cfg.port);
 
 for (const signal of ["SIGINT", "SIGTERM"]) {
   process.on(signal, () => {
@@ -328,4 +345,4 @@ for (const signal of ["SIGINT", "SIGTERM"]) {
   });
 }
 
-export default server;
+export default handleRequest;
