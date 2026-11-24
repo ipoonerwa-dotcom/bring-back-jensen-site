@@ -1,0 +1,115 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Bring Back Jensen</title>
+  <meta name="description" content="#BringBackJensen community meme: hold the token, post on X, register your wallet for dividends.">
+  <meta name="theme-color" content="#0b0b0c">
+  <link rel="icon" href="/favicon.svg" type="image/svg+xml">
+  <link rel="stylesheet" href="/style.css">
+  <script type="module" src="/app.js"></script>
+</head>
+<body>
+  <header class="top">
+    <div class="wrap top-row">
+      <a class="brand" href="/"><span class="brand-mark" aria-hidden="true">#</span><span id="site-name">Bring Back Jensen</span></a>
+      <nav class="top-links">
+        <a id="link-x" target="_blank" rel="noopener noreferrer" hidden>X</a>
+        <a id="link-telegram" target="_blank" rel="noopener noreferrer" hidden>Telegram</a>
+        <a id="link-flap" target="_blank" rel="noopener noreferrer" hidden>Flap</a>
+        <button id="lang-toggle" class="chip" type="button">EN</button>
+      </nav>
+    </div>
+  </header>
+
+  <main class="wrap">
+    <section class="hero">
+      <p class="eyebrow" data-i18n="hero.eyebrow"></p>
+      <h1 class="title"><span class="hash">#</span>BringBackJensen</h1>
+      <p class="lede" data-i18n="hero.lede"></p>
+      <div class="ca" id="ca-row" hidden>
+        <span class="ca-label">CA</span>
+        <a id="ca-link" class="ca-address" target="_blank" rel="noopener noreferrer"></a>
+        <button id="ca-copy" class="chip" type="button" data-i18n="common.copy"></button>
+      </div>
+      <dl class="stats">
+        <div class="stat"><dt data-i18n="stats.registered"></dt><dd id="stat-registered">—</dd></div>
+        <div class="stat"><dt data-i18n="stats.min"></dt><dd id="stat-min">—</dd></div>
+        <div class="stat" id="stat-share-box" hidden><dt data-i18n="stats.share"></dt><dd id="stat-share">—</dd></div>
+        <div class="stat" id="stat-pool-box" hidden><dt data-i18n="stats.pool"></dt><dd id="stat-pool">—</dd></div>
+      </dl>
+    </section>
+
+    <ol class="steps">
+      <li class="step" id="step-1">
+        <span class="step-no">01</span>
+        <div class="step-main">
+          <h2 data-i18n="s1.title"></h2>
+          <p class="step-text" data-i18n="s1.body"></p>
+          <div class="actions">
+            <button id="btn-connect" class="primary" type="button" data-i18n="s1.connect"></button>
+            <button id="btn-switch" class="ghost" type="button" data-i18n="s1.switch" hidden></button>
+          </div>
+          <div id="wallet-picker" class="picker" hidden></div>
+          <dl id="wallet-info" class="kv" hidden>
+            <div><dt data-i18n="s1.address"></dt><dd><code id="wallet-address"></code></dd></div>
+            <div><dt data-i18n="s1.balance"></dt><dd id="wallet-balance"></dd></div>
+          </dl>
+          <p id="wallet-note" class="note" hidden></p>
+        </div>
+      </li>
+
+      <li class="step" id="step-2">
+        <span class="step-no">02</span>
+        <div class="step-main">
+          <h2 data-i18n="s2.title"></h2>
+          <p class="step-text" data-i18n="s2.body"></p>
+          <pre id="tweet-preview" class="tweet is-locked"></pre>
+          <div class="actions">
+            <button id="btn-tweet" class="primary" type="button" data-i18n="s2.post" disabled></button>
+            <button id="btn-copy" class="ghost" type="button" data-i18n="s2.copy" disabled></button>
+          </div>
+          <p id="tweet-note" class="note" hidden></p>
+        </div>
+      </li>
+
+      <li class="step" id="step-3">
+        <span class="step-no">03</span>
+        <div class="step-main">
+          <h2 data-i18n="s3.title"></h2>
+          <p class="step-text" data-i18n="s3.body"></p>
+          <form id="register-form" class="register" novalidate>
+            <input id="tweet-url" type="url" inputmode="url" autocomplete="off" spellcheck="false" data-i18n-placeholder="s3.placeholder" disabled>
+            <button id="btn-register" class="primary" type="submit" data-i18n="s3.submit" disabled></button>
+          </form>
+          <p id="register-note" class="note" role="status" aria-live="polite" hidden></p>
+          <div id="registration" class="done" hidden>
+            <span class="done-label" data-i18n="s3.registered"></span>
+            <a id="registration-link" target="_blank" rel="noopener noreferrer"></a>
+            <span id="registration-time" class="done-time"></span>
+          </div>
+        </div>
+      </li>
+    </ol>
+
+    <section class="rules">
+      <h2 data-i18n="rules.title"></h2>
+      <dl class="faq">
+        <div><dt data-i18n="rules.q1"></dt><dd data-i18n="rules.a1"></dd></div>
+        <div><dt data-i18n="rules.q2"></dt><dd data-i18n="rules.a2"></dd></div>
+        <div><dt data-i18n="rules.q3"></dt><dd data-i18n="rules.a3"></dd></div>
+        <div><dt data-i18n="rules.q4"></dt><dd data-i18n="rules.a4"></dd></div>
+        <div><dt data-i18n="rules.q5"></dt><dd data-i18n="rules.a5"></dd></div>
+      </dl>
+    </section>
+  </main>
+
+  <footer class="foot">
+    <div class="wrap">
+      <p data-i18n="foot.disclaimer"></p>
+      <p data-i18n="foot.risk"></p>
+    </div>
+  </footer>
+</body>
+</html>

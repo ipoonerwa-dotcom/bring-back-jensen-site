@@ -1,0 +1,42 @@
+{
+  "siteName": "Bring Back Jensen",
+  "port": 3260,
+  "host": "127.0.0.1",
+  "trustProxy": false,
+  "chain": {
+    "id": 56,
+    "rpcUrls": [
+      "https://bsc-dataseed.bnbchain.org",
+      "https://bsc-dataseed1.binance.org",
+      "https://bsc-rpc.publicnode.com"
+    ],
+    "explorer": "https://bscscan.com"
+  },
+  "token": {
+    "name": "TOKEN NAME",
+    "symbol": "TICKER",
+    "address": null
+  },
+  "eligibility": {
+    "minBalance": null,
+    "hashtag": "#BringBackJensen",
+    "tweetTemplate": {
+      "zh": "支持黄仁勋回归英伟达！#BringBackJensen ${symbol}\n验证码 {code}",
+      "en": "Bring Jensen back to NVIDIA! #BringBackJensen ${symbol}\nCode {code}"
+    }
+  },
+  "dividend": {
+    "taxSharePct": null,
+    "wallet": null
+  },
+  "links": {
+    "x": null,
+    "telegram": null,
+    "flap": null
+  },
+  "exclude": [],
+  "i18nOverrides": {
+    "zh": {},
+    "en": {}
+  }
+}
