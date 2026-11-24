@@ -332,7 +332,7 @@ function renderConfig() {
 function tweetText() {
   const tpl = state.cfg.eligibility.tweetTemplate;
   const text = state.lang === "en" ? tpl.en || tpl.zh : tpl.zh || tpl.en;
-  return text.replaceAll("{symbol}", state.cfg.token.symbol || "TOKEN").replaceAll("{code}", state.wallet.code);
+  return text.replaceAll("{symbol}", state.cfg.token.symbol || "TOKEN").replaceAll("{code}", state.wallet.code || "");
 }
 
 function renderWallet() {

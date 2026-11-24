@@ -4,16 +4,41 @@ import { createServer } from "node:http";
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
 import { getAddress, isAddress, verifyMessage } from "viem";
-import { DATA_DIR, ROOT, loadConfig, loadSecrets, publicConfig } from "./lib/config.mjs";
-import { StoreConflict, openStore } from "./lib/store.mjs";
+import { DATA_DIR, loadConfig, loadSecrets, publicConfig } from "./lib/config.mjs";
 import { createChain } from "./lib/chain.mjs";
 import { codeFor, textHasCode } from "./lib/code.mjs";
 import { XError, fetchTweet, parseTweetUrl, textHasHashtag } from "./lib/x.mjs";
 
 const cfg = loadConfig();
 const secrets = loadSecrets();
-const store = openStore(join(DATA_DIR, "registrations.db"));
 const chain = createChain(cfg);
+
+// SQLite is opened after the server is listening. A missing node:sqlite or a read-only data/
+// must not throw while the module loads, or Vercel never finishes capturing listen().
+let store = null;
+let StoreConflict = class extends Error {
+  constructor(code) {
+    super(code);
+    this.code = code;
+  }
+};
+const registrationsReady = import("./lib/store.mjs")
+  .then((mod) => {
+    StoreConflict = mod.StoreConflict;
+    try {
+      store = mod.openStore(join(DATA_DIR, "registrations.db"));
+    } catch (e) {
+      console.warn("registrations unavailable:", e.message);
+      store = null;
+    }
+  })
+  .catch((e) => {
+    console.warn("registrations unavailable:", e.message);
+    store = null;
+  });
+registrationsReady.then(() => {
+  if (!store) console.warn("registrations database is not open");
+});
 
 const SIGN_WINDOW_MS = 10 * 60 * 1000;
 const MAX_BODY = 8 * 1024;
@@ -36,6 +61,20 @@ const CSP =
   "default-src 'self'; script-src 'self'; style-src 'self'; img-src 'self' data:; connect-src 'self'; font-src 'self'; " +
   "object-src 'none'; base-uri 'none'; form-action 'none'; frame-ancestors 'none'";
 
+function readPublic(url) {
+  try {
+    return readFileSync(url);
+  } catch (e) {
+    console.warn("static file missing:", e.message);
+    return null;
+  }
+}
+const PUBLIC_FILES = {
+  "index.html": readPublic(new URL("./public/index.html", import.meta.url)),
+  "app.js": readPublic(new URL("./public/app.js", import.meta.url)),
+  "style.css": readPublic(new URL("./public/style.css", import.meta.url)),
+  "favicon.svg": readPublic(new URL("./public/favicon.svg", import.meta.url)),
+};
 const STATIC = {
   "/": ["index.html", "text/html; charset=utf-8"],
   "/index.html": ["index.html", "text/html; charset=utf-8"],
@@ -132,21 +171,26 @@ async function signatureValid(address, message, signature) {
   }
 }
 
+function requireRegistration() {
+  if (!secrets.codeSecret || !store) throw new HttpError(503, "NOT_CONFIGURED");
+}
+
 async function api(req, res, url) {
   const ip = clientIp(req);
+  if (url.pathname !== "/api/config") await registrationsReady;
   switch (`${req.method} ${url.pathname}`) {
     case "GET /api/config":
       return sendJson(res, 200, publicConfig(cfg));
 
     case "GET /api/stats": {
       const pool = await chain.poolBalance().catch(() => null);
-      return sendJson(res, 200, { registered: store.count(), pool });
+      return sendJson(res, 200, { registered: store ? store.count() : 0, pool });
     }
 
     case "GET /api/wallet": {
       if (limited(ip, "wallet", 60, 60_000)) throw new HttpError(429, "RATE_LIMITED");
       const address = parseAddress(url.searchParams.get("address"));
-      const row = store.get(address);
+      const row = store ? store.get(address) : null;
       const balance = await chain.tokenBalance(address).catch((e) => {
         console.warn("balance read failed:", e.shortMessage || e.message);
         return null;
@@ -154,7 +198,7 @@ async function api(req, res, url) {
       const min = balance ? chain.minRaw(balance.decimals) : null;
       return sendJson(res, 200, {
         address,
-        code: codeFor(secrets.codeSecret, address),
+        code: secrets.codeSecret ? codeFor(secrets.codeSecret, address) : null,
         registration: row ? publicRegistration(row) : null,
         balance,
         meetsMin: balance && min !== null ? BigInt(balance.raw) >= min : null,
@@ -173,6 +217,7 @@ async function api(req, res, url) {
 
     case "POST /api/register": {
       if (limited(ip, "register", 8, 60_000)) throw new HttpError(429, "RATE_LIMITED");
+      requireRegistration();
       const body = await readJson(req);
       const address = parseAddress(body.address);
       const tweet = parseTweetUrl(body.tweetUrl);
@@ -238,7 +283,8 @@ const server = createServer(async (req, res) => {
     const entry = STATIC[url.pathname];
     if (!entry) throw new HttpError(404, "NOT_FOUND");
     const [file, type] = entry;
-    const body = readFileSync(join(ROOT, "public", file));
+    const body = PUBLIC_FILES[file];
+    if (!body) throw new HttpError(404, "NOT_FOUND");
     const headers = { ...BASE_HEADERS, "content-type": type, "cache-control": file === "index.html" ? "no-cache" : "public, max-age=300" };
     if (file === "index.html") headers["content-security-policy"] = CSP;
     res.writeHead(200, headers);
@@ -251,17 +297,35 @@ const server = createServer(async (req, res) => {
   }
 });
 
-server.listen(cfg.port, cfg.host, () => {
+function logReady() {
   console.log(`${cfg.siteName} on http://${cfg.host}:${cfg.port}  (config: ${cfg.file}, data: ${DATA_DIR})`);
-  if (cfg.file.endsWith("config.example.json")) console.warn("using config.example.json - copy it to config.json and fill it in");
+  if (cfg.file === "built-in" || cfg.file.endsWith("config.example.json")) {
+    console.warn("using the example config - copy config.example.json to config.json and fill it in");
+  }
+  if (!secrets.codeSecret) console.warn("no code secret: the homepage is up, registration stays off until CODE_SECRET or data/secrets.json is available");
   if (!cfg.token.address) console.warn("token.address is not set: balances are hidden until it is");
   if (cfg.eligibility.minBalance === null) console.warn("eligibility.minBalance is not set: the page shows the threshold as TBA");
+}
+
+server.on("error", (e) => {
+  console.error(e);
 });
+
+// Vercel captures listen() while this module loads and ignores the port and host.
+// Calling it with no host avoids binding only to 127.0.0.1 inside their sandbox.
+if (process.env.VERCEL) server.listen(cfg.port, logReady);
+else server.listen(cfg.port, cfg.host, logReady);
 
 for (const signal of ["SIGINT", "SIGTERM"]) {
   process.on(signal, () => {
     server.close();
-    store.close();
+    try {
+      if (store) store.close();
+    } catch (e) {
+      console.warn(e.message);
+    }
     process.exit(0);
   });
 }
+
+export default server;
